@@ -1,0 +1,142 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  project-ia
+  Sample SAM Template for project-ia
+
+Globals:
+  Function:
+    Timeout: 3
+    LoggingConfig:
+      LogFormat: JSON
+Resources:
+
+  # Servico:S3
+  BucketUploadImageEcommerce:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::AccountId}-upload-image"
+      CorsConfiguration:
+          CorsRules:
+            - AllowedOrigins:
+                - "https://d19xrahy2u07nb.cloudfront.net"
+              AllowedMethods:
+                - GET
+                - PUT
+                - POST
+                - DELETE
+                - HEAD
+              AllowedHeaders:
+                - "*"
+              ExposedHeaders:
+                - "ETag"
+  BucketUploadImageEcommercePolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref BucketUploadImageEcommerce
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 
+              - s3:GetObject
+            Resource: !Sub "arn:aws:s3:::${BucketUploadImageEcommerce}/*"
+
+  # Servico:Lambda
+  CreatePresignedUrlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: presignedUrl/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Architectures:
+      - x86_64
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref BucketUploadImageEcommerce
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref BucketUploadImageEcommerce
+      Events:
+        ApiEcommerce:
+          Type: Api 
+          Properties:
+            Path: /presigned-url
+            Method: get
+
+  # Servico:Lambda
+  CategorizeImageFunction:
+      Type: AWS::Serverless::Function
+      Properties:
+        CodeUri: categorize/
+        Handler: app.lambda_handler
+        Runtime: python3.13
+        Architectures:
+        - x86_64
+        Environment:
+          Variables:
+            SQS_URL: !Ref DetectLabelQueue
+        Policies:
+          - RekognitionDetectOnlyPolicy: {}
+          - S3CrudPolicy:
+              BucketName: !Ref BucketUploadImageEcommerce
+          - SQSSendMessagePolicy:
+              QueueName: !GetAtt DetectLabelQueue.QueueName
+
+  # Servico:SQS
+  DetectLabelQueue:
+    Type: AWS::SQS::Queue
+
+  # Servico:Lambda
+  GenerateContentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: generateContent/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64
+      Timeout: 15
+      Environment:
+        Variables:
+          MODEL_ID: us.anthropic.claude-3-5-haiku-20241022-v1:0
+          PROMPT_TITLE: "Considere ser um especialista em marketing e copywrite, escreva um titulo chamativo para meu produto com base nas etiqutas que irei disponibilizar logo mais. O resultado precisa ser somente o titulo. Deixe claro o que é o produto em seu titulo. Etiquetas: "
+          PROMPT_DESCRIPTION: "a"
+          TABLE_NAME: !Ref BedrockMetadataImageS3Table
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: "*"
+        - SQSPollerPolicy:
+            QueueName: !GetAtt DetectLabelQueue.QueueName
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BedrockMetadataImageS3Table
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt DetectLabelQueue.Arn
+
+  # Servico:Lambda
+  BedrockMetadataImageS3Table:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey:
+        Name: id
+        Type: String
+
+Outputs:
+  ApiEcommerce:
+    Description: "API Gateway endpoint URL for Prod stage for project-ia"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/presigned-url/"
+  CreatePresignedUrlFunction:
+    Description: Hello World Lambda Function ARN
+    Value: !GetAtt CreatePresignedUrlFunction.Arn
+  CreatePresignedUrlFunctionIamRole:
+    Description: Implicit IAM Role created for Hello World function
+    Value: !GetAtt CreatePresignedUrlFunction.Arn
+ 
