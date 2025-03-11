@@ -6,15 +6,26 @@ from datetime import datetime
 
 bedrock_client = boto3.client("bedrock-runtime")
 dynamydb_resource = boto3.resource('dynamodb')
+sns_client = boto3.client("sns")
 
 model_id = os.environ['MODEL_ID'] # ID do modelo de Machine Learning criado no Bedrock
 prompt_title = os.environ['PROMPT_TITLE'] # Título do prompt criado no Bedrock
 prompt_description = os.environ['PROMPT_DESCRIPTION'] # Descrição do prompt criado no Bedrock
 table_name = os.environ['TABLE_NAME'] # Nome da tabela do DynamoDB
-
+sns_topic_arn = os.environ['SNS_TOPIC_ARN'] # Amazon Resource Name do Tópico SNS
 
 
 table = dynamydb_resource.Table(table_name)
+
+
+def send_sms_notification(title, item_id):
+    
+    message = f"Conteúdo {title} gerado. ID: {item_id}"
+    
+    sns_client.publish(
+        TopicArn=sns_topic_arn,
+        Message=message
+    )
 
 def save_to_dynamodb(title, content, labels):
     item_id = str(uuid.uuid4())
@@ -74,12 +85,14 @@ def lambda_handler(event, context):
             
             response_title = invoke_bedrock(prompt_title_final)
             
-            prompt_description_final = f"{prompt_description}  {', '.join(labels)} {response_title} "
+            prompt_description_final = f"{prompt_description}  {', '.join(labels)} Titulo do Produto:{response_title} "
             
             response_description = invoke_bedrock(prompt_description_final)
             
             print(response_title)
             print(response_description)
             
-            item_id = save_to_dynamodb(response_title,response_description, labels)
+            item_id = save_to_dynamodb(response_title, response_description, labels)
+
+            send_sms_notification(response_title, item_id)
     
