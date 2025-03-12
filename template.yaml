@@ -89,6 +89,28 @@ Resources:
             Method: get
 
   # Servico:Lambda
+  GetDynamoDBItemFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: getItemDynamoDB/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Architectures:
+      - x86_64
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref BedrockMetadataImageS3Table
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref BedrockMetadataImageS3Table
+      Events:
+        ApiEcommerce:
+          Type: Api 
+          Properties:
+            Path: /get-item
+            Method: get
+
+  # Servico:Lambda
   CategorizeImageFunction:
       Type: AWS::Serverless::Function
       Properties:
