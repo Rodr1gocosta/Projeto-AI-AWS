@@ -19,7 +19,7 @@ Resources:
       CorsConfiguration:
           CorsRules:
             - AllowedOrigins:
-                - "https://d19xrahy2u07nb.cloudfront.net"
+                - "https://main.d79tm2n166wm5.amplifyapp.com"
               AllowedMethods:
                 - GET
                 - PUT
